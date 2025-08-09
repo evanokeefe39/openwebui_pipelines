@@ -13,6 +13,12 @@ import os
 import time
 import requests
 
+# FORMAT: https://n8n.[your domain].com/webhook/[your webhook URL]
+N8N_WEBHOOK_URL = os.getenv("N8N_WEBHOOK_URL")
+
+if not N8N_WEBHOOK_URL:
+    raise Exception("Missing N8N_WEBHOOK_URL env var!")
+
 
 def extract_event_info(event_emitter) -> tuple[Optional[str], Optional[str]]:
     if not event_emitter or not event_emitter.__closure__:
@@ -28,7 +34,7 @@ def extract_event_info(event_emitter) -> tuple[Optional[str], Optional[str]]:
 class Pipe:
     class Valves(BaseModel):
         n8n_url: str = Field(
-            default="https://n8n.[your domain].com/webhook/[your webhook URL]"
+            default=N8N_WEBHOOK_URL
         )
         n8n_bearer_token: str = Field(default="...")
         input_field: str = Field(default="chatInput")
