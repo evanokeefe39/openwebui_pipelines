@@ -12,8 +12,11 @@ from pydantic import BaseModel, Field
 import os
 import time
 import requests
+from datetime import datetime
+from typing import List
 
 # FORMAT: https://n8n.[your domain].com/webhook/[your webhook URL]
+
 
 def extract_event_info(event_emitter) -> tuple[Optional[str], Optional[str]]:
     if not event_emitter or not event_emitter.__closure__:
@@ -26,6 +29,22 @@ def extract_event_info(event_emitter) -> tuple[Optional[str], Optional[str]]:
     return None, None
 
 
+class MetadataItem(BaseModel):
+    date_accessed: datetime
+    source: str
+
+
+class Source(BaseModel):
+    name: str
+    url: str
+
+
+class Citation(BaseModel):
+    document: List[str]
+    metadata: List[MetadataItem]
+    source: Source
+
+
 class Pipe:
     class Valves(BaseModel):
         n8n_url: str = Field(
@@ -34,6 +53,7 @@ class Pipe:
         n8n_bearer_token: str = Field(default="...")
         input_field: str = Field(default="chatInput")
         response_field: str = Field(default="output")
+        citations_field: str = Field(default="citations")
         emit_interval: float = Field(
             default=2.0, description="Interval in seconds between status emissions"
         )
@@ -47,7 +67,44 @@ class Pipe:
         self.name = "N8N Pipe"
         self.valves = self.Valves()
         self.last_emit_time = 0
+        self.citation = False
         pass
+
+    async def emit_citation(
+        self,
+        __event_emitter__: Callable[[dict], Awaitable[None]],
+        citation: Citation = None,
+    ):
+        current_time = time.time()
+        if current_time - self.last_emit_time >= self.valves.emit_interval:
+
+            citation_dict = citation.dict()
+
+            # await __event_emitter__(
+            #     {
+            #         "type": "citation",
+            #         "data": {
+            #             "document": [
+            #                 "This message will be appended to the chat as a citation when clicked into"
+            #             ],
+            #             "metadata": [
+            #                 {
+            #                     "date_accessed": datetime.now().isoformat(),
+            #                     "source": "title",
+            #                 }
+            #             ],
+            #             "source": {
+            #                 "name": "Title of the content",
+            #                 "url": "http://link-to-citation",
+            #             },
+            #         },
+            #     }
+            # )
+
+            await __event_emitter__({
+                "type": "citation",
+                "data": citation_dict
+            })
 
     async def emit_status(
         self,
@@ -106,11 +163,17 @@ class Pipe:
                 )
                 if response.status_code == 200:
                     n8n_response = response.json()[self.valves.response_field]
+                    n8n_citations = response.json()[self.valves.citations_field]
                 else:
                     raise Exception(f"Error: {response.status_code} - {response.text}")
 
                 # Set assitant message with chain reply
                 body["messages"].append({"role": "assistant", "content": n8n_response})
+
+                for item in n8n_citations:
+                  await self.emit_citation(__event_emitter__, Citation(**item));
+                
+                 
             except Exception as e:
                 await self.emit_status(
                     __event_emitter__,
@@ -135,4 +198,5 @@ class Pipe:
             )
 
         await self.emit_status(__event_emitter__, "info", "Complete", True)
+
         return n8n_response
