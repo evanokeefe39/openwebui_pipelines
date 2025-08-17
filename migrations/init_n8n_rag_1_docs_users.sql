@@ -1,8 +1,8 @@
 -- Enable the pgvector extension to work with embedding vectors
-create extension vector;
+create extension if not exists vector;
 
 -- Create a table to store your documents
-create table documents (
+create table n8n_rag_1_docs_users (
   id bigserial primary key,
   content text, -- corresponds to Document.pageContent
   metadata jsonb, -- corresponds to Document.metadata
@@ -10,7 +10,7 @@ create table documents (
 );
 
 -- Create a function to search for documents
-create function match_documents (
+create or replace function match_docs_n8n_rag_1_docs_users (
   query_embedding vector(1536),
   match_count int default null,
   filter jsonb DEFAULT '{}'
@@ -29,10 +29,10 @@ begin
     id,
     content,
     metadata,
-    1 - (documents.embedding <=> query_embedding) as similarity
-  from documents
+    1 - (n8n_rag_1_docs_users.embedding <=> query_embedding) as similarity
+  from n8n_rag_1_docs_users
   where metadata @> filter
-  order by documents.embedding <=> query_embedding
+  order by n8n_rag_1_docs_users.embedding <=> query_embedding
   limit match_count;
 end;
 $$;
